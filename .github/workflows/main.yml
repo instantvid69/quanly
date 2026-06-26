@@ -1,61 +1,74 @@
 name: quanly
- 
+
 on:
   push:
     branches: 
       - main
   workflow_dispatch:
- 
+
 env:
   BUILD_NUMBER: 1
   BUILD_VERSION: 1.0.0
   PYTHON_VERSION: 3.12.2
   FLUTTER_VERSION: 3.24.0
- 
+  PYTHONUTF8: "1" # Thêm dòng này để sửa lỗi UnicodeEncodeError trên Windows
+
 jobs:
   build:
     runs-on: windows-latest
- 
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
- 
+
     - name: Setup Python ${{ env.PYTHON_VERSION }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
- 
+
     - name: Install Python Dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
- 
+
     - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
       uses: subosito/flutter-action@v2
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
- 
+
     - name: Flet Build Windows
       run: |
         flutter config --no-analytics
-        flet build windows --verbose --no-rich-output --build-number=$env:BUILD_NUMBER --build-version=$env:BUILD_VERSION
- 
+        flet build windows --verbose --build-number=$env:BUILD_NUMBER --build-version=$env:BUILD_VERSION
+
+    # Flet build ra một thư mục gồm file .exe và nhiều file .dll, cần nén lại thành file .zip để đính kèm vào Release
+    - name: Zip Windows Build
+      shell: powershell
+      run: |
+        Compress-Archive -Path build/windows/* -DestinationPath quanly-windows.zip
+
     - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v4.3.4
+      uses: actions/upload-artifact@v4
       with:
-        name: windows-build-artifact
-        path: build/windows
+        name: windows-build-zip
+        path: quanly-windows.zip
         if-no-files-found: error
-        overwrite: false
- 
+        overwrite: true
+
   release:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      # Tải file .zip đã build từ job trước xuống vì job này chạy trên máy ảo Ubuntu độc lập
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build-zip
+
       - name: Release
         uses: jasondavis303/tag-and-release-and-upload@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: v${{ env.BUILD_VERSION }}
-          assets: '[ "windows-build-artifact" ]'
+          assets: '[ "quanly-windows.zip" ]'
           overwrite: false
