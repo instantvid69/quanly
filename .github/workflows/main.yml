@@ -10,8 +10,8 @@ env:
   BUILD_NUMBER: 1
   BUILD_VERSION: 1.0.0
   PYTHON_VERSION: 3.12.2
-  FLUTTER_VERSION: 3.24.0
-  PYTHONUTF8: "1" # Thêm dòng này để sửa lỗi UnicodeEncodeError trên Windows
+  FLUTTER_VERSION: 3.41.7 # Sửa từ 3.24.0 thành 3.41.7 để khớp với Flet
+  PYTHONUTF8: "1"
 
 jobs:
   build:
@@ -41,7 +41,6 @@ jobs:
         flutter config --no-analytics
         flet build windows --verbose --build-number=$env:BUILD_NUMBER --build-version=$env:BUILD_VERSION
 
-    # Flet build ra một thư mục gồm file .exe và nhiều file .dll, cần nén lại thành file .zip để đính kèm vào Release
     - name: Zip Windows Build
       shell: powershell
       run: |
@@ -59,7 +58,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      # Tải file .zip đã build từ job trước xuống vì job này chạy trên máy ảo Ubuntu độc lập
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
         with:
