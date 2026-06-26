@@ -35,7 +35,7 @@ jobs:
     # CHẠY LỆNH BUILD (Flet 0.28.3 sẽ tự động cấu hình Flutter chuẩn của nó)
     - name: Flet Build Windows
       run: |
-        flet build windows --verbose --build-number=${{ env.BUILD_NUMBER }} --build-version=${{ env.BUILD_VERSION }}
+        flet build windows --name quanly --verbose --build-number=${{ env.BUILD_NUMBER }} --build-version=${{ env.BUILD_VERSION }}
 
     - name: Zip Windows Build
       shell: python
