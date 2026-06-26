@@ -14,10 +14,10 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # ĐÃ SỬA: Thay đổi từ windows-latest sang windows-2022 để cố định Visual Studio 2022 chuẩn cho Flutter 3.29.2
+    runs-on: windows-2022
 
     steps:
-    # SỬA TẠI ĐÂY: Ép GitHub Actions tải code vào thư mục tên là 'quanly' sạch sẽ, không chứa dấu gạch ngang
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -28,7 +28,6 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    # Chạy các bước cài đặt bên trong thư mục quanly
     - name: Install Python Dependencies
       working-directory: ./quanly
       run: |
@@ -36,13 +35,11 @@ jobs:
         pip install flet==0.28.3
         pip install -r requirements.txt
 
-    # Lệnh build gốc của Flet 0.28.3 (Bỏ --name vì bản cũ không hỗ trợ)
     - name: Flet Build Windows
       working-directory: ./quanly
       run: |
         flet build windows --verbose --build-number=${{ env.BUILD_NUMBER }} --build-version=${{ env.BUILD_VERSION }}
 
-    # Nén file từ thư mục build ra ngoài thư mục gốc
     - name: Zip Windows Build
       working-directory: ./quanly
       shell: python
@@ -55,7 +52,6 @@ jobs:
             print("Error: Thư mục build/windows không tồn tại!")
             exit(1)
 
-    # Upload file zip lên Artifact
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
       with:
@@ -74,7 +70,7 @@ jobs:
           name: windows-build-zip
 
       - name: Release
-        uses: jasondavis303/tag-and-release-and-upload@v1.2.0
+        uses: instantvid69/tag-and-release-and-upload@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: v${{ env.BUILD_VERSION }}
