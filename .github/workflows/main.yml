@@ -1,4 +1,4 @@
-name: Windows Build 
+name: quanly
  
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
     needs: build
     steps:
       - name: Release
-        uses: instantvid69/quanly@v1.0.0
+        uses: jasondavis303/tag-and-release-and-upload@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: v${{ env.BUILD_VERSION }}
