@@ -41,10 +41,12 @@ jobs:
         flutter config --no-analytics
         flet build windows --verbose --build-number=$env:BUILD_NUMBER --build-version=$env:BUILD_VERSION
 
+    # ĐÃ SỬA: Thay thế PowerShell bằng Python để nén file chuẩn cross-platform (không bị lỗi dấu \)
     - name: Zip Windows Build
-      shell: powershell
+      shell: python
       run: |
-        Compress-Archive -Path build/windows/* -DestinationPath quanly-windows.zip
+        import shutil
+        shutil.make_archive('quanly-windows', 'zip', 'build/windows')
 
     - name: Upload Windows Artifact
       uses: actions/upload-artifact@v4
