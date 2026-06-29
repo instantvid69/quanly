@@ -73,7 +73,7 @@ class AllowanceDashboardApp:
         self.search_field = ft.TextField(
             label="Tìm kiếm theo tên, năm sinh, đơn vị, số hiệu...",
             prefix_icon=ft.Icons.SEARCH,
-            on_change=self.filter_allowance_list,
+            on_submit=self.filter_allowance_list,
             border_radius=12,
             bgcolor=ft.Colors.WHITE,
             border_color=ft.Colors.BLUE_200,
@@ -94,11 +94,20 @@ class AllowanceDashboardApp:
         )
         self.list_container = ft.ListView(spacing=8, expand=True)
 
-        # UI cho Tab 2: Thống Kê
+        # Cấu hình bộ lọc theo Ngày cho Tab 2
+        self.target_date = datetime.now()
+        self.date_picker = ft.DatePicker(
+            on_change=self.change_target_date,
+            first_date=datetime(1990, 1, 1),
+            last_date=datetime(2100, 12, 31)
+        )
+        self.page.overlay.append(self.date_picker)
+
+        # UI cho Tab 2: Bộ Lọc
         self.stats_search_field = ft.TextField(
             label="Tìm theo tên, số hiệu, đơn vị...",
             prefix_icon=ft.Icons.SEARCH,
-            on_change=self.apply_statistics_filter,
+            on_submit=self.apply_statistics_filter,
             border_radius=10,
             bgcolor=ft.Colors.WHITE,
             border_color=ft.Colors.BLUE_200,
@@ -106,17 +115,28 @@ class AllowanceDashboardApp:
             dense=True,
             expand=True
         )
-        self.filter_unit_dd = ft.Dropdown(label="Đơn vị hiện tại", width=180, on_change=self.apply_statistics_filter, dense=True, border_radius=10, bgcolor=ft.Colors.WHITE)
+        
+        self.btn_pick_date = ft.ElevatedButton(
+            f"Tính đến: {self.target_date.strftime('%d/%m/%Y')}",
+            icon=ft.Icons.CALENDAR_MONTH,
+            on_click=lambda _: self.page.open(self.date_picker),
+            style=ft.ButtonStyle(
+                bgcolor=ft.Colors.WHITE,
+                color=ft.Colors.BLUE_800,
+                shape=ft.RoundedRectangleBorder(radius=10)
+            )
+        )
+
+        self.filter_unit_dd = ft.Dropdown(label="Đơn vị", width=160, on_change=self.apply_statistics_filter, dense=True, border_radius=10, bgcolor=ft.Colors.WHITE)
         self.filter_rate_dd = ft.Dropdown(label="Mức hưởng", width=120, on_change=self.apply_statistics_filter, dense=True, border_radius=10, bgcolor=ft.Colors.WHITE)
         self.filter_status_dd = ft.Dropdown(
-            label="Trạng thái hạn",
-            width=160,
+            label="Trạng thái",
+            width=220,
             options=[
                 ft.dropdown.Option("Tất cả"),
-                ft.dropdown.Option("Đến hạn/Quá hạn"),
-                ft.dropdown.Option("Còn 1 tháng"),
-                ft.dropdown.Option("Còn dưới 3 tháng"),
-                ft.dropdown.Option("An toàn"),
+                ft.dropdown.Option("Đủ điều kiện chuyển mức"),
+                ft.dropdown.Option("Còn <= 3 tháng chuyển mức"),
+                ft.dropdown.Option("Đang hưởng an toàn"),
             ],
             on_change=self.apply_statistics_filter,
             dense=True,
@@ -124,7 +144,7 @@ class AllowanceDashboardApp:
             bgcolor=ft.Colors.WHITE
         )
         self.export_docx_btn = ft.ElevatedButton(
-            "Xuất biểu mẫu Word",
+            "Xuất Word",
             icon=ft.Icons.DESCRIPTION,
             on_click=self.trigger_docx_save_picker,
             style=ft.ButtonStyle(
@@ -137,7 +157,10 @@ class AllowanceDashboardApp:
         self.stats_total_text = ft.Text("Tổng số nhân sự: 0", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_800)
         self.stats_container = ft.ListView(spacing=8, expand=True)
 
-        # UI cho Tab 4: Điều Chỉnh
+        # UI cho Tab 3: Thống Kê
+        self.summary_stats_view = ft.ListView(spacing=10, expand=True)
+
+        # UI cho Tab 5: Điều Chỉnh
         self.adjust_search_field = ft.TextField(
             label="Lọc nhanh nhân sự cần chỉnh sửa dữ liệu...",
             prefix_icon=ft.Icons.EDIT,
@@ -152,6 +175,17 @@ class AllowanceDashboardApp:
         self.adjust_table_container = ft.Column(scroll=ft.ScrollMode.ALWAYS, expand=True)
 
         self.create_ui()
+
+        if os.path.exists("thuhut.xlsx"):
+            self.process_excel_file("thuhut.xlsx")
+
+    def change_target_date(self, e):
+        if self.date_picker.value:
+            self.target_date = self.date_picker.value
+            self.btn_pick_date.text = f"Tính đến: {self.target_date.strftime('%d/%m/%Y')}"
+            self.page.update()
+            self.apply_statistics_filter(None)
+            self.render_summary_stats()
 
     def create_ui(self):
         header = ft.Container(
@@ -182,7 +216,6 @@ class AllowanceDashboardApp:
             shadow=ft.BoxShadow(blur_radius=8, color=ft.Colors.BLUE_GREY_200, offset=ft.Offset(0, 3))
         )
 
-        # Tab 1 Layout
         tab_danh_sach = ft.Container(
             content=ft.Column([
                 ft.Row([self.search_field, self.search_button], spacing=10),
@@ -192,8 +225,7 @@ class AllowanceDashboardApp:
             padding=10
         )
 
-        # Tab 2 Layout
-        tab_thong_ke = ft.Container(
+        tab_bo_loc = ft.Container(
             content=ft.Column([
                 ft.Container(
                     content=ft.Row([
@@ -201,12 +233,13 @@ class AllowanceDashboardApp:
                         self.filter_unit_dd, 
                         self.filter_rate_dd, 
                         self.filter_status_dd,
+                        self.btn_pick_date,
                         self.export_docx_btn
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     padding=10, bgcolor=ft.Colors.BLUE_GREY_100, border_radius=12
                 ),
                 ft.Row([
-                    ft.Icon(ft.Icons.ANALYTICS, color=ft.Colors.BLUE_700, size=20),
+                    ft.Icon(ft.Icons.FILTER_ALT, color=ft.Colors.BLUE_700, size=20),
                     self.stats_total_text
                 ], spacing=8),
                 ft.Container(content=self.stats_container, expand=True)
@@ -214,24 +247,24 @@ class AllowanceDashboardApp:
             padding=10
         )
 
-        # Tab 3 Layout
+        tab_thong_ke = ft.Container(
+            content=ft.Column([
+                ft.Text("THỐNG KÊ CHI TIẾT THEO MỨC HƯỞNG VÀ MỐC TIẾP THEO", size=15, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                ft.Text("💡 Số liệu được tự động tính toán dựa trên mốc 'Tính đến ngày' ở Tab 2.", size=12, italic=True, color=ft.Colors.TEAL_800),
+                ft.Divider(height=1, color=ft.Colors.GREY_300),
+                ft.Container(content=self.summary_stats_view, expand=True)
+            ], spacing=15),
+            padding=15
+        )
+
         tab_huong_dan = ft.Container(
             content=ft.Column([
                 ft.Text("VĂN BẢN HƯỚNG DẪN", size=15, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_900),
                 ft.Divider(height=1, color=ft.Colors.GREY_300),
-                # ft.Row([
-                #     self.build_guidance_card("Hướng dẫn 01/HD-BCA", "Thực hiện chế độ phụ cấp thu hút và điều động cán bộ địa bàn trọng điểm.", "Bộ Công An", ft.Colors.RED_ACCENT_700),
-                #     self.build_guidance_card("Nghị định 76/2019/NĐ-CP", "Chính sách đối với cán bộ, công chức, viên chức công tác ở vùng đặc biệt khó khăn.", "Chính Phủ", ft.Colors.BLUE_ACCENT_700),
-                # ], spacing=15),
-                # ft.Row([
-                #     self.build_guidance_card("Thông tư 14/TT-BNV", "Hướng dẫn vạch định ranh giới và thời hạn tính mốc hưởng thu hút vùng biên giới.", "Bộ Nội Vụ", ft.Colors.TEAL_700),
-                #     self.build_guidance_card("Quyết định số 22/QĐ-HĐND", "Phê duyệt bổ sung kinh phí hỗ trợ phụ cấp thu hút cán bộ năm hành chính.", "Hội Đồng Nhân Dân", ft.Colors.ORANGE_ACCENT_700),
-                # ], spacing=15),
             ], spacing=15, scroll=ft.ScrollMode.ALWAYS),
             padding=15
         )
 
-        # Tab 4 Layout
         tab_dieu_chinh = ft.Container(
             content=ft.Column([
                 ft.Row([self.adjust_search_field]),
@@ -252,39 +285,228 @@ class AllowanceDashboardApp:
             animation_duration=200,
             tabs=[
                 ft.Tab(text="1. Danh sách tổng hợp", icon=ft.Icons.LIST_ALT, content=tab_danh_sach),
-                ft.Tab(text="2. Bộ lọc & Thống kê", icon=ft.Icons.BAR_CHART, content=tab_thong_ke),
-                ft.Tab(text="3. Văn bản hướng dẫn", icon=ft.Icons.BOOKMARK, content=tab_huong_dan),
-                ft.Tab(text="4. Điều chỉnh", icon=ft.Icons.GRID_ON, content=tab_dieu_chinh),
+                ft.Tab(text="2. Bộ lọc", icon=ft.Icons.FILTER_ALT, content=tab_bo_loc),
+                ft.Tab(text="3. Thống kê", icon=ft.Icons.PIE_CHART, content=tab_thong_ke),
+                ft.Tab(text="4. Văn bản hướng dẫn", icon=ft.Icons.BOOKMARK, content=tab_huong_dan),
+                ft.Tab(text="5. Điều chỉnh", icon=ft.Icons.GRID_ON, content=tab_dieu_chinh),
             ],
             expand=True
         )
 
         self.page.add(ft.Column([header, ft.Container(height=5), self.tabs_control], expand=True, spacing=0))
 
-    def build_guidance_card(self, title, desc, author, accent_color):
-        return ft.Container(
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.ARTICLE, color=accent_color, size=20),
-                    ft.Text(title, size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_900)
-                ], spacing=8),
-                ft.Text(desc, size=13, color=ft.Colors.BLUE_GREY_700, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                ft.Divider(height=8, color=ft.Colors.GREY_100),
-                ft.Row([
+    def get_cumulative_months(self, emp, target_dt):
+        total_months = 0
+        for rec in emp["all_records"]:
+            s_str = rec.get("start_date", "")
+            e_str = rec.get("end_date", "")
+            if not s_str or s_str == "Chưa cập nhật": continue
+            try:
+                s_dt = datetime.strptime(s_str, '%d/%m/%Y')
+                e_dt = target_dt
+                if e_str and e_str != "Chưa cập nhật":
+                    parsed_e = datetime.strptime(e_str, '%d/%m/%Y')
+                    e_dt = min(target_dt, parsed_e)
+                if e_dt > s_dt:
+                    diff = relativedelta(e_dt, s_dt)
+                    total_months += diff.years * 12 + diff.months
+            except: pass
+        return total_months
+
+    def evaluate_cumulative_status(self, emp, target_dt):
+        total_months = self.get_cumulative_months(emp, target_dt)
+        if not emp["all_records"]:
+            return "GREY", "Chưa rõ", ft.Colors.GREY_600
+            
+        latest_rec = emp["all_records"][-1]
+        rate = str(latest_rec.get("rate", "70%")).strip().lower()
+        
+        # --- TRƯỜNG HỢP 1: ĐANG Ở MỨC THU HÚT 70% ---
+        if "70" in rate:
+            if total_months >= 120:
+                # Đã vượt mốc 120 tháng
+                return "RED", f"Đủ ĐK chuyển LN 0.7", ft.Colors.RED_600
+            elif 60 <= total_months < 120:
+                # Nằm trong khoảng từ 60 đến dưới 120 tháng -> Đang tiến về mốc 120 tháng
+                left_to_120 = 120 - total_months
+                if left_to_120 <= 3:
+                    return "ORANGE", f"Còn {left_to_120} tháng chuyển LN 0.7", ft.Colors.ORANGE_700
+                return "RED", f"Đủ ĐK chuyển LN 0.5", ft.Colors.RED_600
+            else:
+                # Dưới 60 tháng -> Đang tiến về mốc 60 tháng
+                left_to_60 = 60 - total_months
+                if left_to_60 <= 3:
+                    return "ORANGE", f"Còn {left_to_60} tháng chuyển LN 0.5", ft.Colors.ORANGE_700
+                return "GREEN", f"Còn {left_to_60} tháng chuyển LN 0.5", ft.Colors.GREEN_700
+                
+        # --- TRƯỜNG HỢP 2: ĐANG Ở MỨC LÂU NĂM 0.5 ---
+        elif "0.5" in rate:
+            if total_months >= 180:
+                # Đã vượt mốc 180 tháng
+                return "RED", f"Đủ ĐK chuyển LN 1.0", ft.Colors.RED_600
+            elif 120 <= total_months < 180:
+                # Nằm trong khoảng từ 120 đến dưới 180 tháng -> Đang tiến về mốc 180 tháng
+                left_to_180 = 180 - total_months
+                if left_to_180 <= 3:
+                    return "ORANGE", f"Còn {left_to_180} tháng chuyển LN 1.0", ft.Colors.ORANGE_700
+                return "RED", f"Đủ ĐK chuyển LN 0.7", ft.Colors.RED_600
+            else:
+                # Dưới 120 tháng -> Đang tiến về mốc 120 tháng
+                left_to_120 = 120 - total_months
+                if left_to_120 <= 3:
+                    return "ORANGE", f"Đang LN 0.5 (còn {left_to_120} tháng lên 0.7)", ft.Colors.ORANGE_700
+                return "GREEN", f"Đang LN 0.5 (còn {left_to_120} tháng lên 0.7)", ft.Colors.GREEN_700
+                
+        # --- TRƯỜNG HỢP 3: ĐANG Ở MỨC LÂU NĂM 0.7 ---
+        elif "0.7" in rate:
+            if total_months >= 180:
+                # Đã vượt mốc 180 tháng
+                return "RED", f"Đủ ĐK chuyển LN 1.0", ft.Colors.RED_600
+            else:
+                # Dưới 180 tháng -> Đang tiến về mốc 180 tháng
+                left_to_180 = 180 - total_months
+                if left_to_180 <= 3:
+                    return "ORANGE", f"Đang LN 0.7 (còn {left_to_180} tháng lên 1.0)", ft.Colors.ORANGE_700
+                return "GREEN", f"Đang LN 0.7 (còn {left_to_180} tháng lên 1.0)", ft.Colors.GREEN_700
+                
+        # --- TRƯỜNG HỢP 4: ĐANG Ở MỨC LÂU NĂM ĐỊCH TRẦN 1.0 ---
+        elif "1.0" in rate or rate == "1" or "100" in rate:
+            return "BLUE", f"Đang hưởng LN 1.0", ft.Colors.BLUE_700
+            
+        # --- TRƯỜNG HỢP 5: CHƯA RÕ MỨC HOẶC MỨC KHÁC ---
+        else:
+            if total_months >= 60:
+                return "RED", f"Đủ ĐK chuyển LN 0.5", ft.Colors.RED_600
+            else:
+                left_to_60 = 60 - total_months
+                if left_to_60 <= 3:
+                    return "ORANGE", f"Còn {left_to_60} tháng chuyển LN 0.5", ft.Colors.ORANGE_700
+                return "GREEN", f"Khác (còn {left_to_60} tháng lên 0.5)", ft.Colors.GREEN_700
+
+    def evaluate_record_status(self, emp, rec_index, target_dt):
+        # Nếu không phải là dòng ghi chú cuối cùng, báo là lịch sử đã qua
+        if rec_index < len(emp["all_records"]) - 1:
+            return "GREY", "Đã hoàn thành", ft.Colors.GREY_500
+        return self.evaluate_cumulative_status(emp, target_dt)
+
+    def render_summary_stats(self):
+        self.summary_stats_view.controls.clear()
+
+        # 1. Cấu trúc lưu trữ số lượng của đúng 9 mục yêu cầu
+        stats = {
+            "tong_doi_tuong": {"count": 0},
+            "tong_hien_huong": {"count": 0},
+            "dang_huong_70": {"count": 0},
+            "dang_huong_05": {"count": 0},
+            "dang_huong_07": {"count": 0},
+            "dang_huong_10": {"count": 0},
+            "du_dk_05": {"count": 0},
+            "du_dk_07": {"count": 0},
+            "du_dk_10": {"count": 0},
+        }
+
+        # 2. Quét dữ liệu master_data và phân loại số lượng khớp 100% với bộ lọc
+        for norm_key, emp in self.master_data.items():
+            if not emp["all_records"]: 
+                continue
+            
+            latest_rec = emp["all_records"][-1]
+            raw_rate = str(latest_rec.get("rate", "")).strip().lower().replace(",", ".")
+            total_m = self.get_cumulative_months(emp, self.target_date)
+
+            # - Mục 1: Tổng số đối tượng
+            stats["tong_doi_tuong"]["count"] += 1
+
+            # Kiểm tra trạng thái Hiện hưởng (chưa có ngày kết thúc)
+            end_date_val = latest_rec.get("end_date")
+            is_hien_huong = False
+            
+            if latest_rec.get("is_projected", False):
+                is_hien_huong = True
+            else:
+                end_date_val = latest_rec.get("end_date")
+                if not end_date_val:
+                    is_hien_huong = True
+                else:
+                    end_date_str = str(end_date_val).strip().lower()
+                    if end_date_str in ["", "nan", "nat", "-", "chưa cập nhật"]:
+                        is_hien_huong = True
+
+            # - Mục 2: Tổng số hiện hưởng
+            if is_hien_huong:
+                stats["tong_hien_huong"]["count"] += 1
+
+            # - Mục 3 đến 6: Tổng số đang hưởng các mức
+            if "70" in raw_rate:
+                stats["dang_huong_70"]["count"] += 1
+            elif "0.5" in raw_rate:
+                stats["dang_huong_05"]["count"] += 1
+            elif "0.7" in raw_rate:
+                stats["dang_huong_07"]["count"] += 1
+            elif "1.0" in raw_rate or raw_rate == "1" or "100" in raw_rate:
+                stats["dang_huong_10"]["count"] += 1
+
+            # - Mục 7 đến 9: Tính toán điều kiện đủ thâm niên chuyển mức hưởng
+            if "70" in raw_rate:
+                if total_m >= 120:
+                    stats["du_dk_07"]["count"] += 1
+                elif 60 <= total_m < 120:
+                    stats["du_dk_05"]["count"] += 1
+            elif "0.5" in raw_rate:
+                if total_m >= 180:
+                    stats["du_dk_10"]["count"] += 1
+                elif 120 <= total_m < 180:
+                    stats["du_dk_07"]["count"] += 1
+            elif "0.7" in raw_rate:
+                if total_m >= 180:
+                    stats["du_dk_10"]["count"] += 1
+            else:
+                if total_m >= 60:
+                    stats["du_dk_05"]["count"] += 1
+
+        # 3. Định hình danh sách hiển thị phẳng theo cấu trúc 9 dòng yêu cầu
+        ordered_config = [
+            ("Tổng số đối tượng trong danh sách", "tong_doi_tuong", ft.Icons.PEOPLE_ALT),
+            ("Tổng số hiện hưởng", "tong_hien_huong", ft.Icons.TOGGLE_ON),
+            ("Tổng số đang hưởng mức 70%", "dang_huong_70", ft.Icons.PERCENT),
+            ("Tổng số đang hưởng mức 0.5", "dang_huong_05", ft.Icons.LOOKS_5),
+            ("Tổng số đang hưởng mức 0.7", "dang_huong_07", ft.Icons.LOOKS_6),
+            ("Tổng số đang hưởng mức 1.0", "dang_huong_10", ft.Icons.LOOKS_ONE),
+            ("Tổng số đủ điều kiện hưởng 0.5", "du_dk_05", ft.Icons.STAR_HALF),
+            ("Tổng số đủ điều kiện hưởng 0.7", "du_dk_07", ft.Icons.STAR),
+            ("Tổng số đủ điều kiện hưởng 1.0", "du_dk_10", ft.Icons.STAR),
+        ]
+
+        # 4. Tạo giao diện phẳng tĩnh (Static Row)
+        for label, data_key, icon_name in ordered_config:
+            count = stats[data_key]["count"]
+
+            # Thiết lập màu sắc dựa trên việc có hay không có nhân sự
+            theme_color = ft.Colors.BLUE_800 if count > 0 else ft.Colors.BLUE_GREY_300
+            badge_bg = ft.Colors.BLUE_900 if count > 0 else ft.Colors.BLUE_GREY_400
+
+            # Xây dựng container phẳng đơn giản hiển thị thông tin
+            row_item = ft.Container(
+                content=ft.Row([
+                    ft.Icon(icon_name, color=theme_color, size=20),
+                    ft.Text(label, size=13, weight=ft.FontWeight.W_500, expand=True),
                     ft.Container(
-                        content=ft.Text(author, size=10, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD),
-                        bgcolor=accent_color, padding=ft.padding.symmetric(horizontal=8, vertical=3), border_radius=5
-                    ),
-                    ft.TextButton("Xem chi tiết", icon=ft.Icons.OPEN_IN_NEW, style=ft.ButtonStyle(color=accent_color))
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-            ], spacing=8),
-            bgcolor=ft.Colors.WHITE,
-            padding=14,
-            border_radius=10,
-            border=ft.border.all(1, ft.Colors.GREY_200),
-            expand=True,
-            shadow=ft.BoxShadow(blur_radius=4, color=ft.Colors.GREY_300, offset=ft.Offset(0, 2))
-        )
+                        content=ft.Text(f"{count} người", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=12),
+                        bgcolor=badge_bg,
+                        padding=ft.padding.symmetric(horizontal=12, vertical=4),
+                        border_radius=12
+                    )
+                ], spacing=10),
+                padding=12,
+                bgcolor=ft.Colors.WHITE,
+                border=ft.border.all(1, ft.Colors.GREY_200),
+                border_radius=8,
+                margin=ft.margin.only(bottom=6)
+            )
+
+            self.summary_stats_view.controls.append(row_item)
+
+        self.page.update()
 
     def build_table_header(self):
         return ft.Container(
@@ -293,8 +515,8 @@ class AllowanceDashboardApp:
                 ft.Text("Số hiệu", size=12, weight=ft.FontWeight.BOLD, width=100, color=ft.Colors.WHITE),
                 ft.Text("Đơn vị hiện tại", size=12, weight=ft.FontWeight.BOLD, width=160, color=ft.Colors.WHITE),
                 ft.Text("Mức hiện tại", size=12, weight=ft.FontWeight.BOLD, width=100, color=ft.Colors.WHITE),
-                ft.Text("Các mốc thời gian hưởng", size=12, weight=ft.FontWeight.BOLD, width=200, color=ft.Colors.WHITE),
-                ft.Text("Trạng thái hạn", size=12, weight=ft.FontWeight.BOLD, expand=True, text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE),
+                ft.Text("Tổng thời gian hưởng", size=12, weight=ft.FontWeight.BOLD, width=200, color=ft.Colors.WHITE), # <--- ĐÃ SỬA Ở ĐÂY
+                ft.Text("Trạng thái", size=12, weight=ft.FontWeight.BOLD, expand=True, text_align=ft.TextAlign.RIGHT, color=ft.Colors.WHITE),
             ]),
             gradient=ft.LinearGradient(colors=[ft.Colors.BLUE_GREY_800, ft.Colors.BLUE_GREY_700]),
             padding=ft.padding.symmetric(horizontal=12, vertical=12),
@@ -307,29 +529,17 @@ class AllowanceDashboardApp:
         self.page.update()
         file_picker.pick_files(allowed_extensions=["xlsx"])
 
-    def calculate_months_left(self, start_str: str, end_str: str) -> tuple[str, str, str]:
-        if not end_str or end_str == "Chưa cập nhật":
-            return "GREEN", "Chưa cập nhật hạn cuối", ft.Colors.GREEN_700
-
+    def process_excel_file(self, e):
+        if e is None: return
         try:
-            end_date = datetime.strptime(end_str, '%d/%m/%Y')
-            today = datetime.now()
-
-            if end_date <= today: return "BLACK", "Đến hạn/Quá hạn", ft.Colors.BLACK
-
-            diff = relativedelta(end_date, today)
-            total_months = diff.years * 12 + diff.months
-
-            if total_months <= 1: return "RED", "Còn 1 tháng", ft.Colors.RED_600
-            elif total_months <= 3: return "ORANGE", f"Còn {total_months} tháng", ft.Colors.ORANGE_700
-            else: return "GREEN", f"Còn {total_months} tháng", ft.Colors.GREEN_700
-        except:
-            return "GREY", "Chưa xác định", ft.Colors.GREY_600
-
-    def process_excel_file(self, e: ft.FilePickerResultEvent):
-        if not e.files: return
-        try:
-            path = e.files[0].path
+            # Nếu e là một chuỗi đường dẫn trực tiếp (tự động load)
+            if isinstance(e, str):
+                path = e
+            else:
+                # Ngược lại nếu gọi qua nút bấm FilePicker
+                if not e.files: return
+                path = e.files[0].path
+            
             sheets_dict = pd.read_excel(path, sheet_name=None)
             self.master_data.clear()
             self.extra_headers.clear()
@@ -361,14 +571,10 @@ class AllowanceDashboardApp:
                     
                     extracted_yob = ""
                     if raw_name and raw_name.lower() != 'nan':
-                        # DÙNG REGEX ĐÃ BIÊN DỊCH TRƯỚC ĐỂ TĂNG TỐC
                         match_yob = yob_regex.search(raw_name) 
                         if match_yob:
                             extracted_yob = match_yob.group(1)
                             raw_name = yob_replace_regex.sub("", raw_name).strip()
-                        if match_yob:
-                            extracted_yob = match_yob.group(1)
-                            raw_name = re.sub(r"\s*\(19\d{2}\)|\s*\(20\d{2}\)", "", raw_name).strip()
 
                     raw_yob = ""
                     if yob_col and pd.notna(row[yob_col]):
@@ -400,28 +606,30 @@ class AllowanceDashboardApp:
                     if raw_unit and raw_unit.lower() != 'nan': last_unit = clean_unit_name(raw_unit)
                     else: raw_unit = last_unit
 
+                    # Lấy Mức hưởng thô
                     rate_val = str(row[rate_col]).strip() if rate_col and pd.notna(row[rate_col]) else ""
-                    if not rate_val or rate_val.lower() in ['nan', '', '-', '.', '0']: rate_val = "70%"
 
                     start_val = clean_cell_to_date_str(row[start_date_col]) if start_date_col else ""
                     end_val = clean_cell_to_date_str(row[end_date_col]) if end_date_col else ""
 
+                    # Khôi phục logic 5 năm và thêm biến is_projected
+                    is_projected = False 
                     if start_val and not end_val:
                         try:
                             start_dt = datetime.strptime(start_val, '%d/%m/%Y')
                             end_dt = start_dt + relativedelta(years=5)
                             end_val = end_dt.strftime('%d/%m/%Y')
+                            is_projected = True # Đánh dấu đây là ngày dự kiến
                         except: pass
 
                     smart_months_val = "Chưa cập nhật"
                     if start_val and start_val != "Chưa cập nhật":
                         try:
                             start_dt = datetime.strptime(start_val, '%d/%m/%Y')
-                            today = today_date
-                            end_point = today
+                            end_point = today_date
                             if end_val and end_val != "Chưa cập nhật":
                                 end_dt = datetime.strptime(end_val, '%d/%m/%Y')
-                                end_point = min(today, end_dt)
+                                end_point = min(today_date, end_dt)
 
                             if end_point >= start_dt:
                                 diff = relativedelta(end_point, start_dt)
@@ -434,25 +642,19 @@ class AllowanceDashboardApp:
 
                     row_details = {}
                     unnamed_idx = 1
-                    chuthich_lines = []  # Danh sách tạm để gom các dòng chú thích
+                    chuthich_lines = [] 
 
                     for k, v in row.items():
                         k_str = str(k).strip()
-                        # Kiểm tra xem đây có phải cột không có header (Unnamed) không
                         is_unnamed = "unnamed" in k_str.lower() or not k_str
-                        
                         v_str = str(v).strip()
-                        # Kiểm tra ô có dữ liệu thực tế hay không
                         has_value = not (pd.isna(v) or v_str.lower() in ['nan', 'nat', '-', '.', '0', ''])
 
-                        # NẾU LÀ CỘT UNNAMED: Gom vào cột "Chú thích" tổng hợp (nếu có dữ liệu)
                         if is_unnamed:
-                            if has_value:
-                                chuthich_lines.append(f"- Ghi chú {unnamed_idx}: {v_str}")
+                            if has_value: chuthich_lines.append(f"- Ghi chú {unnamed_idx}: {v_str}")
                             unnamed_idx += 1
-                            continue  # Bỏ qua các xử lý core_cols hoặc extra_headers ở dưới cho cột này
+                            continue
 
-                        # NẾU LÀ CỘT CÓ TÊN: Xử lý phân loại bình thường
                         if name_col and k == name_col: row_details[k_str] = raw_name
                         elif yob_col and k == yob_col: row_details[k_str] = raw_yob
                         elif cand_col and k == cand_col: row_details[k_str] = raw_cand
@@ -464,7 +666,6 @@ class AllowanceDashboardApp:
                         else:
                             row_details[k_str] = v_str if has_value else "Chưa cập nhật"
 
-                        # Thu thập tự động các cột phụ CÓ TÊN (không nằm trong nhóm dữ liệu chính)
                         core_cols = [
                             str(name_col).strip() if name_col else "",
                             str(yob_col).strip() if yob_col else "",
@@ -477,15 +678,10 @@ class AllowanceDashboardApp:
                         if k_str not in core_cols and k_str not in self.extra_headers:
                             self.extra_headers.append(k_str)
 
-                    # SAU KHI DUYỆT HẾT CÁC CỘT: Tổng hợp danh sách chú thích vào row_details
-                    if chuthich_lines:
-                        row_details["Chú thích"] = "\n".join(chuthich_lines)
-                    else:
-                        row_details["Chú thích"] = "Không có"  # Hoặc để trống "" tùy bạn
+                    if chuthich_lines: row_details["Chú thích"] = "\n".join(chuthich_lines)
+                    else: row_details["Chú thích"] = "Không có"
 
-                    # Đưa duy nhất một cột "Chú thích" vào danh sách hiển thị
-                    if "Chú thích" not in self.extra_headers:
-                        self.extra_headers.append("Chú thích")
+                    if "Chú thích" not in self.extra_headers: self.extra_headers.append("Chú thích")
 
                     if not total_months_col:
                         row_details["Tổng số tháng"] = smart_months_val
@@ -496,8 +692,6 @@ class AllowanceDashboardApp:
                     elif start_val: duration_text = f"Từ {start_val}"
                     elif end_val: duration_text = f"Đến {end_val}"
                     else: duration_text = "Chưa cập nhật"
-
-                    color_code, badge_desc, color_flet = self.calculate_months_left(start_val, end_val)
 
                     if norm_key not in self.master_data:
                         self.master_data[norm_key] = {
@@ -522,16 +716,15 @@ class AllowanceDashboardApp:
                             "sheet": sheet_name,
                             "start_date": start_val,
                             "end_date": end_val,
+                            "is_projected": is_projected, # THÊM DÒNG NÀY
                             "rate": rate_val,
                             "duration_str": duration_text,
                             "full_row": row_details,
                             "unit": raw_unit if raw_unit else "Chưa cập nhật",
                             "cand_id": raw_cand if raw_cand else "Chưa cập nhật",
-                            "status_color_code": color_code,
-                            "status_badge_desc": badge_desc,
-                            "status_color_flet": color_flet
                         })
 
+            # Gom các record của người dùng bị phân tách
             name_to_keys = {}
             for k, emp in self.master_data.items():
                 norm_name = normalize_text(emp["display_name"])
@@ -564,14 +757,33 @@ class AllowanceDashboardApp:
                 try: return datetime.strptime(s_date, "%d/%m/%Y")
                 except: return datetime.min
 
+            # Sắp xếp lịch sử quá trình và Cập nhật Mức hưởng thừa kế (Inheritance)
             for norm_key, emp in self.master_data.items():
                 emp["all_records"].sort(key=get_sort_date)
+                
                 final_unit, final_cand = "Chưa cập nhật", "Chưa cập nhật"
-                for rec in reversed(emp["all_records"]):
+                last_rate = "70%" # Mặc định dòng đầu
+                
+                for rec in emp["all_records"]:
                     u = rec.get("unit", "Chưa cập nhật")
                     if u and u != "Chưa cập nhật" and final_unit == "Chưa cập nhật": final_unit = u
                     c = rec.get("cand_id", "Chưa cập nhật")
                     if c and c != "Chưa cập nhật" and final_cand == "Chưa cập nhật": final_cand = c
+                    
+                    # Logic thừa kế và chuẩn hóa mức hưởng
+                    raw_rate = str(rec["full_row"].get("Mức hiện tại") or rec.get("rate", "")).strip().lower()
+                    if not raw_rate or raw_rate in ['nan', '', '-', '.', '0', 'chưa cập nhật']:
+                        n_rate = last_rate
+                    elif "70" in raw_rate: n_rate = "70%"
+                    elif "0.5" in raw_rate: n_rate = "0.5"
+                    elif "0.7" in raw_rate: n_rate = "0.7"
+                    elif "1.0" in raw_rate or raw_rate == "1" or "100" in raw_rate: n_rate = "1.0"
+                    else: n_rate = str(rec.get("rate", "")) if str(rec.get("rate", "")) else last_rate
+                    
+                    rec["rate"] = n_rate
+                    rec["full_row"]["Mức hiện tại"] = n_rate
+                    last_rate = n_rate
+                    
                 emp["unit"] = final_unit
                 emp["cand_id"] = final_cand
 
@@ -591,6 +803,7 @@ class AllowanceDashboardApp:
             self.filtered_data = self.master_data.copy()
             self.render_allowance_list(append=False)
             self.render_statistics_list(append=False)
+            self.render_summary_stats()
             self.render_adjustment_list(append=False)
 
             self.page.open(ft.SnackBar(ft.Text("Đồng bộ dữ liệu thành công!"), bgcolor=ft.Colors.GREEN_600))
@@ -610,6 +823,17 @@ class AllowanceDashboardApp:
         if not emp or not emp["all_records"]: return
 
         display_yob = emp['yob'] if emp['yob'] != "Chưa cập nhật" else ""
+        
+        # Tính toán tổng thời gian hiển thị ở Popup
+        total_m = self.get_cumulative_months(emp, datetime.now())
+        years = total_m // 12
+        months = total_m % 12
+        breakdown = []
+        if years > 0: breakdown.append(f"{years} năm")
+        if months > 0: breakdown.append(f"{months} tháng")
+        total_duration_str = f"{total_m} tháng ({' '.join(breakdown)})" if breakdown else "0 tháng"
+
+        # Bổ sung cột "Tổng TG hưởng" bên cạnh "Đơn vị hiện tại"
         info_profile = ft.Container(
             content=ft.ResponsiveRow([
                 ft.Column([
@@ -623,11 +847,15 @@ class AllowanceDashboardApp:
                 ft.Column([
                     ft.Text("Số hiệu CAND", size=11, color=ft.Colors.BLUE_GREY_400, weight=ft.FontWeight.W_500),
                     ft.Text(emp['cand_id'], size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
-                ], col={"xs": 12, "sm": 6, "md": 3}),
+                ], col={"xs": 12, "sm": 6, "md": 2}),
                 ft.Column([
                     ft.Text("Đơn vị hiện tại", size=11, color=ft.Colors.BLUE_GREY_400, weight=ft.FontWeight.W_500),
                     ft.Text(emp['unit'], size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, overflow=ft.TextOverflow.ELLIPSIS)
-                ], col={"xs": 12, "sm": 6, "md": 4}),
+                ], col={"xs": 12, "sm": 6, "md": 3}),
+                ft.Column([
+                    ft.Text("Tổng thời gian hưởng", size=11, color=ft.Colors.BLUE_GREY_400, weight=ft.FontWeight.W_500),
+                    ft.Text(total_duration_str, size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_600)
+                ], col={"xs": 12, "sm": 6, "md": 2}),
             ], spacing=10),
             bgcolor=ft.Colors.BLUE_GREY_50, padding=15, border_radius=8, margin=ft.margin.only(bottom=15)
         )
@@ -637,13 +865,13 @@ class AllowanceDashboardApp:
         exclude_kws = ['ho va ten', 'ho ten', 'hoten', 'ten', 'nam sinh', 'namsinh', 'ngay sinh', 'ngaysinh', 'so hieu cand', 'so hieu', 'sh cand', 'so hieu quan nhan']
         filtered_headers = [h for h in all_headers if normalize_text(h) not in exclude_kws]
 
-        extended_headers = filtered_headers + ["Trạng thái hạn"]
+        extended_headers = filtered_headers + ["Trạng thái"]
         data_columns = [ft.DataColumn(ft.Text(h, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_700, size=12)) for h in extended_headers]
 
         data_rows = []
-        for rec in emp["all_records"]:
-            badge_desc = rec.get("status_badge_desc", "Chưa rõ")
-            color_flet = rec.get("status_color_flet", ft.Colors.GREY_600)
+        for idx, rec in enumerate(emp["all_records"]):
+            # Lấy trạng thái của bản ghi dựa trên thời điểm hiện tại
+            _, badge_desc, color_flet = self.evaluate_record_status(emp, idx, datetime.now())
 
             row_cells = []
             for h in filtered_headers:
@@ -667,13 +895,13 @@ class AllowanceDashboardApp:
 
         popup_layout = ft.Column([
             info_profile,
-            ft.Text("📅 Lịch sử điều chỉnh:", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_600),
+            ft.Text("📅 Lịch sử quá trình:", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_GREY_600),
             ft.Container(content=scrollable_container, expand=True)
         ], spacing=5, expand=True)
 
         def redirect_to_excel_mode(e):
             self.page.close(dialog)
-            self.tabs_control.selected_index = 3 
+            self.tabs_control.selected_index = 4 
             self.adjust_search_field.value = emp['display_name']
             self.render_adjustment_list(append=False)
             self.page.update()
@@ -716,10 +944,22 @@ class AllowanceDashboardApp:
         page_items = items[start_idx:end_idx]
 
         for norm_key, emp in page_items:
-            duration_views = [ft.Text(rec["duration_str"], size=13) for rec in emp["all_records"]]
+            # 1. Tính tổng thời gian đã hưởng
+            total_m = self.get_cumulative_months(emp, datetime.now())
+            years = total_m // 12
+            months = total_m % 12
+            breakdown = []
+            if years > 0: breakdown.append(f"{years} năm")
+            if months > 0: breakdown.append(f"{months} tháng")
+            duration_str = f"{total_m} tháng ({' '.join(breakdown)})" if breakdown else "0 tháng"
+            
+            # Giao diện hiển thị tổng thời gian
+            duration_view = ft.Text(duration_str, size=13, weight=ft.FontWeight.W_500, color=ft.Colors.TEAL_800)
+
             latest_rec = emp["all_records"][-1]
-            badge_desc = latest_rec.get("status_badge_desc", "Chưa rõ")
-            color_flet = latest_rec.get("status_color_flet", ft.Colors.GREY_600)
+            
+            # 2. Tính toán tình trạng Lũy Kế dựa theo thời điểm hiện tại (Ngày chạy App)
+            c_code, badge_desc, color_flet = self.evaluate_cumulative_status(emp, datetime.now())
             display_title = self.get_clean_display_title(emp)
 
             row_card = ft.Container(
@@ -728,7 +968,10 @@ class AllowanceDashboardApp:
                     ft.Text(emp["cand_id"], size=13, width=100),
                     ft.Text(emp["unit"], size=13, width=160, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Container(content=ft.Text(latest_rec["rate"], size=13), width=100),
-                    ft.Column(controls=duration_views, width=200, spacing=6),
+                    
+                    # 3. Thay thế ft.Column cũ bằng Container chứa tổng thời gian
+                    ft.Container(content=duration_view, width=200),
+                    
                     ft.Container(
                         content=ft.Container(
                             content=ft.Text(badge_desc, color=ft.Colors.WHITE, size=11, weight=ft.FontWeight.W_500),
@@ -783,6 +1026,8 @@ class AllowanceDashboardApp:
             status_f = self.filter_status_dd.value
 
             for norm_key, emp in self.master_data.items():
+                if not emp["all_records"]: continue
+                
                 if q_stats:
                     if not (q_stats in normalize_text(emp["display_name"]) or 
                             q_stats in normalize_text(emp["cand_id"]) or 
@@ -795,14 +1040,15 @@ class AllowanceDashboardApp:
                 match_found = True
                 if (rate_f and rate_f != "Tất cả") or (status_f and status_f != "Tất cả"):
                     has_rate, has_status = False, False
-                    for rec in emp["all_records"]:
-                        color_code = rec.get("status_color_code", "GREY")
-                        if rate_f and rate_f != "Tất cả" and rec["rate"] == rate_f: has_rate = True
-                        if status_f and status_f != "Tất cả":
-                            if status_f == "Đến hạn/Quá hạn" and color_code == "BLACK": has_status = True
-                            if status_f == "Còn 1 tháng" and color_code == "RED": has_status = True
-                            if status_f == "Còn dưới 3 tháng" and color_code == "ORANGE": has_status = True
-                            if status_f == "An toàn" and color_code == "GREEN": has_status = True
+                    
+                    latest_rec = emp["all_records"][-1]
+                    if rate_f and rate_f != "Tất cả" and latest_rec["rate"] == rate_f: has_rate = True
+                    
+                    color_code, _, _ = self.evaluate_cumulative_status(emp, self.target_date)
+                    if status_f and status_f != "Tất cả":
+                        if status_f == "Đủ điều kiện chuyển mức" and color_code == "RED": has_status = True
+                        if status_f == "Còn <= 3 tháng chuyển mức" and color_code == "ORANGE": has_status = True
+                        if status_f == "Đang hưởng an toàn" and color_code in ["GREEN", "BLUE"]: has_status = True
 
                     if rate_f and rate_f != "Tất cả" and not has_rate: match_found = False
                     if status_f and status_f != "Tất cả" and not has_status: match_found = False
@@ -821,8 +1067,9 @@ class AllowanceDashboardApp:
 
         for norm_key, emp in page_items:
             latest_rec = emp["all_records"][-1]
-            badge_desc = latest_rec.get("status_badge_desc", "Chưa rõ")
-            color_flet = latest_rec.get("status_color_flet", ft.Colors.GREY_600)
+            
+            # Badge tự động tính theo `target_date` tại Tab Thống kê
+            _, badge_desc, color_flet = self.evaluate_cumulative_status(emp, self.target_date)
             display_title = self.get_clean_display_title(emp)
 
             stats_row = ft.Container(
@@ -884,7 +1131,6 @@ class AllowanceDashboardApp:
 
             doc = Document()
             
-            # Cấu hình Layout khổ giấy A4, lề chuẩn văn bản hành chính (0.6 inch ~ 1.5 cm)
             sections = doc.sections
             for section in sections:
                 section.top_margin = Inches(0.6)
@@ -894,11 +1140,9 @@ class AllowanceDashboardApp:
 
             num_people = len(self.stats_filtered_items)
 
-            # ================== TRƯỜNG HỢP 1: TRONG THỐNG KÊ CHỈ CÓ 01 NGƯỜI ==================
             if num_people == 1:
                 _, emp = self.stats_filtered_items[0]
                 
-                # Khung Cơ quan chủ quản và Quốc hiệu Tiêu ngữ (Bảng ẩn viền)
                 header_table = doc.add_table(rows=1, cols=2)
                 header_table.autofit = False
                 header_table.columns[0].width = Inches(3.0)
@@ -932,7 +1176,6 @@ class AllowanceDashboardApp:
                 p_space = doc.add_paragraph()
                 p_space.paragraph_format.space_before = Pt(12)
                 
-                # Địa danh, ngày tháng năm
                 p_date = doc.add_paragraph()
                 p_date.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 current_date_str = f"Cao Bằng, ngày {datetime.now().day} tháng {datetime.now().month} năm {datetime.now().year}"
@@ -944,7 +1187,6 @@ class AllowanceDashboardApp:
                 p_space2 = doc.add_paragraph()
                 p_space2.paragraph_format.space_before = Pt(18)
                 
-                # Tiêu đề
                 p_title = doc.add_paragraph()
                 p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 r_title = p_title.add_run("QUÁ TRÌNH HƯỞNG PHỤ CẤP")
@@ -955,7 +1197,6 @@ class AllowanceDashboardApp:
                 p_space3 = doc.add_paragraph()
                 p_space3.paragraph_format.space_before = Pt(18)
                 
-                # Thông tin định danh cá nhân (nằm ngoài bảng)
                 sh_str = emp['cand_id'] if emp['cand_id'] != "Chưa cập nhật" else ""
                 p_info1 = doc.add_paragraph()
                 r_info1 = p_info1.add_run(f"Họ và tên: {emp['display_name']};        Số hiệu: {sh_str}")
@@ -974,7 +1215,6 @@ class AllowanceDashboardApp:
                 r_info3.font.size = Pt(11)
                 r_info3.font.bold = True
                 
-                # Bảng quá trình hưởng độc lập
                 num_records = len(emp["all_records"])
                 table = doc.add_table(rows=num_records + 2, cols=6, style='Table Grid')
                 table.autofit = False
@@ -1038,7 +1278,6 @@ class AllowanceDashboardApp:
                         r.font.name = 'Arial'
                         r.font.size = Pt(10)
                 
-                # Hàng tổng cộng
                 footer_row_idx = num_records + 1
                 total_duration_str = ""
                 if total_months_sum > 0:
@@ -1069,9 +1308,7 @@ class AllowanceDashboardApp:
                 r_foot2.font.size = Pt(10)
                 r_foot2.font.bold = True
 
-            # ================== TRƯỜNG HỢP 2: TRONG THỐNG KÊ CÓ TỪ 02 NGƯỜI TRỞ LÊN ==================
             else:
-                # Khung Cơ quan chủ quản và Quốc hiệu Tiêu ngữ (Bảng ẩn viền)
                 header_table = doc.add_table(rows=1, cols=2)
                 header_table.autofit = False
                 header_table.columns[0].width = Inches(3.0)
@@ -1105,7 +1342,6 @@ class AllowanceDashboardApp:
                 p_space = doc.add_paragraph()
                 p_space.paragraph_format.space_before = Pt(12)
                 
-                # Địa danh, ngày tháng
                 p_date = doc.add_paragraph()
                 p_date.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 current_date_str = f"Cao Bằng, ngày {datetime.now().day} tháng {datetime.now().month} năm {datetime.now().year}"
@@ -1117,7 +1353,6 @@ class AllowanceDashboardApp:
                 p_space2 = doc.add_paragraph()
                 p_space2.paragraph_format.space_before = Pt(18)
                 
-                # Tiêu đề danh sách tổng hợp
                 p_title = doc.add_paragraph()
                 p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 r_title = p_title.add_run("DANH SÁCH TỔNG HỢP QUÁ TRÌNH HƯỞNG PHỤ CẤP")
@@ -1128,19 +1363,16 @@ class AllowanceDashboardApp:
                 p_space3 = doc.add_paragraph()
                 p_space3.paragraph_format.space_before = Pt(18)
                 
-                # Tính tổng số hàng của tất cả bản ghi của mọi người để khởi tạo một bảng lớn duy nhất
                 total_rows_needed = sum(len(emp["all_records"]) for _, emp in self.stats_filtered_items)
                 
                 table = doc.add_table(rows=total_rows_needed + 1, cols=8, style='Table Grid')
                 table.autofit = False
                 
-                # Định kích thước độ rộng của 8 cột tích hợp
                 col_widths = [Inches(0.4), Inches(1.4), Inches(0.8), Inches(1.3), Inches(0.9), Inches(0.9), Inches(0.9), Inches(0.8)]
                 for row in table.rows:
                     for idx, width in enumerate(col_widths):
                         row.cells[idx].width = width
                 
-                # Tạo hàng tiêu đề cho bảng tổng hợp
                 headers = ["STT", "Họ và tên", "Số hiệu", "Đơn vị công tác", "TG Bắt đầu", "TG Kết thúc", "Lý do kết thúc", "Thời gian"]
                 for idx, h_text in enumerate(headers):
                     cell = table.cell(0, idx)
@@ -1152,13 +1384,12 @@ class AllowanceDashboardApp:
                     r.font.size = Pt(10)
                     r.font.bold = True
                 
-                # Đổ dữ liệu tuần tự và tự động gộp dòng (Merge) thông tin định danh cá nhân
                 global_stt = 1
                 row_idx = 1
                 for _, emp in self.stats_filtered_items:
                     sh_str = emp['cand_id'] if emp['cand_id'] != "Chưa cập nhật" else ""
                     num_records = len(emp["all_records"])
-                    start_row = row_idx  # Đánh dấu dòng bắt đầu của nhân sự này
+                    start_row = row_idx  
                     
                     for i, rec in enumerate(emp["all_records"]):
                         unit = rec.get("unit", "")
@@ -1189,7 +1420,6 @@ class AllowanceDashboardApp:
                         ]
                         
                         for col_idx, val in enumerate(vals):
-                            # Nếu là dòng thứ 2 trở đi của cùng 1 người, bỏ qua các cột STT, Họ tên, Số hiệu để tránh lặp chữ sau khi gộp ô
                             if i > 0 and col_idx in [0, 1, 2]:
                                 continue
                                 
@@ -1203,15 +1433,14 @@ class AllowanceDashboardApp:
                         
                         row_idx += 1
                     
-                    # Tiến hành merge (gộp dòng) nếu nhân sự này có từ 2 cập nhật trở lên
                     if num_records > 1:
                         end_row = start_row + num_records - 1
-                        for col_idx in [0, 1, 2]:  # Gộp ô cho cột STT, Họ và tên, Số hiệu
+                        for col_idx in [0, 1, 2]: 
                             cell_start = table.cell(start_row, col_idx)
                             cell_end = table.cell(end_row, col_idx)
                             cell_start.merge(cell_end)
                             
-                    global_stt += 1  # Chỉ tăng STT khi chuyển sang người tiếp theo
+                    global_stt += 1 
 
             doc.save(e.path)
             self.page.open(ft.SnackBar(ft.Text(f"Xuất file biểu mẫu Word thành công tại: {e.path}"), bgcolor=ft.Colors.GREEN_600))
@@ -1231,13 +1460,11 @@ class AllowanceDashboardApp:
             self.adjust_table_container.controls.clear()
             self.adjust_page_number = 1
             
-            # SỬ DỤNG LISTVIEW THAY VÌ COLUMN ĐỂ TỐI ƯU RENDER
             self.adjust_grid = ft.ListView(spacing=0, expand=True) 
             
             self.adjust_horizontal_wrapper = ft.Row(
                 scroll=ft.ScrollMode.ALWAYS, 
                 controls=[
-                    # Bọc ListView trong một Container có width đủ rộng để cho phép cuộn ngang
                     ft.Container(content=self.adjust_grid, width=1500, expand=True) 
                 ],
                 expand=True
@@ -1276,7 +1503,7 @@ class AllowanceDashboardApp:
         w_rate = 75     
         w_start = 85    
         w_end = 85      
-        w_extra = 130 # Độ rộng tiêu chuẩn cho các cột ghi chú/mở rộng
+        w_extra = 130 
 
         row_height = 38 
         header_height = 35
@@ -1294,7 +1521,6 @@ class AllowanceDashboardApp:
                 ft.Container(content=ft.Text("Kết thúc", weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_900, size=12), width=w_end, height=header_height, bgcolor=ft.Colors.TEAL_50, alignment=ft.alignment.center, border=ft.border.all(0.5, ft.Colors.GREY_300)),
             ]
             
-            # Sinh Header động cho các cột dư ra (Ghi chú, lâu năm...)
             for ext_header in self.extra_headers:
                 header_controls.append(
                     ft.Container(content=ft.Text(ext_header, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_900, size=12), width=w_extra, height=header_height, bgcolor=ft.Colors.TEAL_50, alignment=ft.alignment.center, border=ft.border.all(0.5, ft.Colors.GREY_300))
@@ -1322,14 +1548,8 @@ class AllowanceDashboardApp:
                         target_rec["unit"] = val
                         target_emp["unit"] = val 
                     elif field_type == "rate": target_rec["rate"] = val
-                    elif field_type == "start":
-                        target_rec["start_date"] = val
-                        c_code, b_desc, c_flet = self.calculate_months_left(val, target_rec["end_date"])
-                        target_rec.update({"status_color_code": c_code, "status_badge_desc": b_desc, "status_color_flet": c_flet})
-                    elif field_type == "end":
-                        target_rec["end_date"] = val
-                        c_code, b_desc, c_flet = self.calculate_months_left(target_rec["start_date"], val)
-                        target_rec.update({"status_color_code": c_code, "status_badge_desc": b_desc, "status_color_flet": c_flet})
+                    elif field_type == "start": target_rec["start_date"] = val
+                    elif field_type == "end": target_rec["end_date"] = val
                     elif field_type == "extra" and extra_key:
                         target_rec["full_row"][extra_key] = val
                 return cell_on_change
@@ -1355,7 +1575,6 @@ class AllowanceDashboardApp:
                     ft.Container(content=end_tf, width=w_end, height=row_height, alignment=ft.alignment.center, border=ft.border.only(bottom=ft.BorderSide(0.5, ft.Colors.GREY_300), right=ft.BorderSide(0.5, ft.Colors.GREY_300)))
                 ]
 
-                # Sinh TextField động cho các cột ghi chú/mở rộng
                 for ext_header in self.extra_headers:
                     ext_val = rec["full_row"].get(ext_header, "Chưa cập nhật")
                     ext_tf = ft.TextField(value=ext_val, border=ft.InputBorder.NONE, dense=True, text_size=12, text_align=ft.TextAlign.LEFT, content_padding=cell_tf_padding, on_change=make_cell_changer(emp_key, idx, "extra", ext_header))
