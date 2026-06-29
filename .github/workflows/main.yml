@@ -14,7 +14,6 @@ env:
 
 jobs:
   build:
-    # ĐÃ SỬA: Thay đổi từ windows-latest sang windows-2022 để cố định Visual Studio 2022 chuẩn cho Flutter 3.29.2
     runs-on: windows-2022
 
     steps:
@@ -32,24 +31,26 @@ jobs:
       working-directory: ./quanly
       run: |
         python -m pip install --upgrade pip
-        pip install flet==0.28.3
+        pip install pyinstaller flet==0.28.3
         pip install -r requirements.txt
 
-    - name: Flet Build Windows
+    # BƯỚC THAY ĐỔI: Sử dụng PyInstaller để đóng gói thay vì Flet Build
+    - name: PyInstaller Build Windows
       working-directory: ./quanly
       run: |
-        flet build windows --verbose --build-number=${{ env.BUILD_NUMBER }} --build-version=${{ env.BUILD_VERSION }}
+        pyinstaller --noconfirm --onedir --windowed --name "Quanly" --clean main.py
 
+    # BƯỚC THAY ĐỔI: Cập nhật đường dẫn zip từ 'build/windows' sang 'dist/Quanly'
     - name: Zip Windows Build
       working-directory: ./quanly
       shell: python
       run: |
         import shutil
         import os
-        if os.path.exists('build/windows'):
-            shutil.make_archive('../quanly-windows', 'zip', 'build/windows')
+        if os.path.exists('dist/Quanly'):
+            shutil.make_archive('../quanly-windows', 'zip', 'dist/Quanly')
         else:
-            print("Error: Thư mục build/windows không tồn tại!")
+            print("Error: Thư mục dist/Quanly không tồn tại!")
             exit(1)
 
     - name: Upload Windows Artifact
@@ -70,7 +71,7 @@ jobs:
           name: windows-build-zip
 
       - name: Release
-        uses: instantvid69/tag-and-release-and-upload@v1.2.0
+        uses: instantvid69/quanly/tag-and-release-and-upload@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: v${{ env.BUILD_VERSION }}
