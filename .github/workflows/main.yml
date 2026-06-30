@@ -34,13 +34,12 @@ jobs:
         pip install pyinstaller flet==0.28.3
         pip install -r requirements.txt
 
-    # BƯỚC THAY ĐỔI: Sử dụng PyInstaller để đóng gói thay vì Flet Build
+    # THAY ĐỔI: Sử dụng "python -m PyInstaller" để ép buộc sử dụng đúng môi trường python chứa flet
     - name: PyInstaller Build Windows
       working-directory: ./quanly
       run: |
-        pyinstaller --noconfirm --onedir --windowed --name "Quanly" --clean main.py
+        python -m PyInstaller --noconfirm --onedir --windowed --name "Quanly" --clean main.py
 
-    # BƯỚC THAY ĐỔI: Cập nhật đường dẫn zip từ 'build/windows' sang 'dist/Quanly'
     - name: Zip Windows Build
       working-directory: ./quanly
       shell: python
@@ -65,10 +64,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      # THAY ĐỔI: Thêm "path: ." vì download-artifact v4 mặc định sẽ tạo một thư mục con trùng tên với artifact
       - name: Download Windows Artifact
         uses: actions/download-artifact@v4
         with:
           name: windows-build-zip
+          path: .
 
       - name: Release
         uses: instantvid69/quanly/tag-and-release-and-upload@v1.2.0
