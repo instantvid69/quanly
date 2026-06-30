@@ -27,20 +27,20 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    # CẬP NHẬT 1: Cài thêm cryptography và jinja2 để flet không bị lỗi quét module
     - name: Install Python Dependencies
       working-directory: ./quanly
       run: |
         python -m pip install --upgrade pip
-        python -m pip install pyinstaller flet==0.28.3
+        python -m pip install pyinstaller flet==0.28.3 cryptography jinja2
         python -m pip install -r requirements.txt
 
-    # BƯỚC THAY ĐỔI QUAN TRỌNG: Thêm tham số --collect-all flet
+    # CẬP NHẬT 2: Gom cả gói flet_runtime (Nơi chứa bộ cài Flutter Engine của Flet v0.28+)
     - name: PyInstaller Build Windows
       working-directory: ./quanly
       run: |
-        python -m PyInstaller --noconfirm --onedir --windowed --name "Quanly" --clean --collect-all flet main.py
+        python -m PyInstaller --noconfirm --onedir --windowed --name "Quanly" --clean --collect-all flet --collect-all flet_runtime main.py
 
-    # Sản phẩm nằm trong dist/Quanly đúng như logic cũ của bạn
     - name: Zip Windows Build
       working-directory: ./quanly
       shell: python
