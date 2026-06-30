@@ -27,14 +27,15 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    # SỬA ĐỔI 1: Cài đặt tường minh flet-desktop cùng phiên bản
     - name: Install Python Dependencies
       working-directory: ./quanly
       run: |
         python -m pip install --upgrade pip
-        python -m pip install pyinstaller flet==0.28.3 cryptography jinja2
+        python -m pip install pyinstaller flet==0.28.3 flet-desktop==0.28.3 cryptography jinja2
         python -m pip install -r requirements.txt
 
-    # SỬA ĐỔI QUAN TRỌNG: Thêm gom gói flet_desktop vào PyInstaller
+    # SỬA ĐỔI 2: Đảm bảo PyInstaller bốc trọn gói bộ ba nguyên tử của Flet
     - name: PyInstaller Build Windows
       working-directory: ./quanly
       run: |
