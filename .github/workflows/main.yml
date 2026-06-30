@@ -27,7 +27,6 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    # SỬA ĐỔI 1: Ép buộc dùng "python -m pip" cho tất cả các gói để cài đúng vào Python 3.12.2
     - name: Install Python Dependencies
       working-directory: ./quanly
       run: |
@@ -35,19 +34,19 @@ jobs:
         python -m pip install pyinstaller flet==0.28.3
         python -m pip install -r requirements.txt
 
-    # SỬA ĐỔI 2: Dùng "flet pack" thay vì pyinstaller thô để tự động thu thập Flutter Engine
-    - name: Flet Pack Build Windows
+    # BƯỚC THAY ĐỔI QUAN TRỌNG: Thêm tham số --collect-all flet
+    - name: PyInstaller Build Windows
       working-directory: ./quanly
       run: |
-        python -m flet pack --name "Quanly" main.py
+        python -m PyInstaller --noconfirm --onedir --windowed --name "Quanly" --clean --collect-all flet main.py
 
+    # Sản phẩm nằm trong dist/Quanly đúng như logic cũ của bạn
     - name: Zip Windows Build
       working-directory: ./quanly
       shell: python
       run: |
         import shutil
         import os
-        # flet pack vẫn sinh ra sản phẩm trong thư mục dist/Quanly giống PyInstaller
         if os.path.exists('dist/Quanly'):
             shutil.make_archive('../quanly-windows', 'zip', 'dist/Quanly')
         else:
@@ -73,7 +72,7 @@ jobs:
           path: .
 
       - name: Release
-        uses: instantvid69/quanly/tag-and-release-and-upload@v1.0.0
+        uses: instantvid69/quanly/tag-and-release-and-upload@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: v${{ env.BUILD_VERSION }}
